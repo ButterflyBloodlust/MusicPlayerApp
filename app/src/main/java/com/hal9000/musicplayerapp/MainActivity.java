@@ -37,6 +37,9 @@ public class MainActivity extends AppCompatActivity {
     private static final int REQUEST_READ_EXTERNAL_STORAGE_PERMISSION_ID = 100;
     private static final String KEY_SONGS_PATHS = "songs_paths";
     private static final String KEY_LEFT_WHILE_PLAYING = "left_while_playing";
+    public static final String KEY_SERVICE = "KEY_SERVICE";
+    public static final String KEY_PLAY_INTENT = "KEY_PLAY_INTENT";
+    public static final String LOG_ERR_TAG = "Err";
 
     //song list variables
     //private ArrayList<Song> songList;
@@ -49,25 +52,25 @@ public class MainActivity extends AppCompatActivity {
     //binding
     private boolean musicBound=false;
     private boolean leftWhilePlaying=false;
+    private boolean playButtonCheck;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        Log.d(LOG_ERR_TAG, "onCreate() begin ");
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
         initToolbar();
 
-
-        ActivityCompat.requestPermissions(this, permissions, REQUEST_READ_EXTERNAL_STORAGE_PERMISSION_ID);
-
+        ActivityCompat.requestPermissions(this, permissions, REQUEST_READ_EXTERNAL_STORAGE_PERMISSION_ID);  // This call is asynchronous !!!
 
         playPauseButton = findViewById(R.id.toggleButton_play_pause);
         playPauseButton.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
             public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
                 if(isChecked){
                     //Toast.makeText(MainActivity.this, "Service not started", Toast.LENGTH_SHORT).show();
-                    if (leftWhilePlaying)
-                        leftWhilePlaying = false;
+                    if (playButtonCheck)
+                        playButtonCheck = false;
                     else
                         mService.playSong(songsPaths.get(1118));
                 }
@@ -79,7 +82,7 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        restoreState(); // TODO should be before buttons
+        Log.d(LOG_ERR_TAG, "onCreate() end ");
     }
 
     private void processMusicFiles() {
@@ -142,8 +145,9 @@ public class MainActivity extends AppCompatActivity {
         }
         if (!permissionToReadExtStorageAccepted ) finish();
         else {
+            restoreState();
             if (playIntent==null) bindAndStartSrv();
-            if (songsPaths==null) restoreState();
+
         }
     }
 
@@ -151,15 +155,16 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onStart() {
         super.onStart();
-        if(playIntent==null && permissionToReadExtStorageAccepted){
-            bindAndStartSrv();
-        }
+
     }
 
     private void bindAndStartSrv() {
+        Log.d(LOG_ERR_TAG, "bindAndStartSrv() begin ");
         playIntent = new Intent(this, MediaPlayerService.class);
-        bindService(playIntent, musicConnection, Context.BIND_AUTO_CREATE); // Context.BIND_AUTO_CREATE
-        startService(playIntent);
+        if(!leftWhilePlaying)
+            startService(playIntent);
+        bindService(playIntent, musicConnection, 0); // Context.BIND_AUTO_CREATE
+        Log.d(LOG_ERR_TAG, "bindAndStartSrv() end ");
     }
 
     private void initToolbar() {
@@ -217,13 +222,19 @@ public class MainActivity extends AppCompatActivity {
     public void onStop(){
         super.onStop();
         saveSongsArrayState();
+        if(mService.isPlaying()){
+            leftWhilePlaying = true;
+            savePlayPauseState();
+            //saveServiceState();
+        }
     }
 
     @Override
     public void onDestroy(){
         super.onDestroy();
-        if (!mService.isPlaying())
+        if (!mService.isPlaying()) {
             MediaPlayerService.stop(MainActivity.this);
+        }
         else {
             leftWhilePlaying = true;
             savePlayPauseState();
@@ -246,6 +257,18 @@ public class MainActivity extends AppCompatActivity {
         prefsEditor.apply();
     }
 
+    private void saveServiceState(){
+        SharedPreferences sharedPref = this.getPreferences(Context.MODE_PRIVATE);
+        SharedPreferences.Editor prefsEditor = sharedPref.edit();
+
+        Gson gson = new Gson();
+        String json = gson.toJson(mService);
+        prefsEditor.putString(KEY_SERVICE, json);
+        String json2 = gson.toJson(playIntent);
+        prefsEditor.putString(KEY_PLAY_INTENT, json2);
+        prefsEditor.apply();
+    }
+
     private void restoreState(){
         // Restore songs array
         SharedPreferences sharedPref = this.getPreferences(Context.MODE_PRIVATE);
@@ -261,9 +284,17 @@ public class MainActivity extends AppCompatActivity {
             processMusicFiles();
 
         // Restore play / pause button state
-        leftWhilePlaying = sharedPref.getBoolean(KEY_LEFT_WHILE_PLAYING, false);
-        if(leftWhilePlaying)
+        playButtonCheck = leftWhilePlaying = sharedPref.getBoolean(KEY_LEFT_WHILE_PLAYING, false);
+        if(leftWhilePlaying) {
             playPauseButton.setChecked(!playPauseButton.isChecked());
+/*
+            Gson gson = new Gson();
+            String jsonText = sharedPref.getString(KEY_SERVICE, null);
+            mService = gson.fromJson(jsonText, MediaPlayerService.class);
+            String jsonText2 = sharedPref.getString(KEY_PLAY_INTENT, null);
+            playIntent = gson.fromJson(jsonText2, Intent.class);*/
+        }
+        // Restore service references ^
 
         SharedPreferences.Editor preferencesEditor = sharedPref.edit();
         preferencesEditor.clear();

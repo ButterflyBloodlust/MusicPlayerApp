@@ -18,6 +18,7 @@ import java.io.File;
 import java.io.IOException;
 
 import static android.os.Environment.DIRECTORY_MUSIC;
+import static com.hal9000.musicplayerapp.MainActivity.LOG_ERR_TAG;
 
 
 public class MediaPlayerService extends Service implements MediaPlayer.OnPreparedListener, MediaPlayer.OnCompletionListener{
@@ -65,13 +66,18 @@ public class MediaPlayerService extends Service implements MediaPlayer.OnPrepare
     }
 
     public int onStartCommand(Intent intent, int flags, int startId) {
+        Toast.makeText(MediaPlayerService.this, "Service started", Toast.LENGTH_SHORT).show();
+        Log.d(LOG_ERR_TAG, "Service started");
+        initMediaPlayer();
 
+        return START_NOT_STICKY;
+    }
+
+    private void initMediaPlayer() {
         mMediaPlayer = new MediaPlayer();
         mMediaPlayer.setAudioStreamType(AudioManager.STREAM_MUSIC);
         mMediaPlayer.setOnPreparedListener(this);
         mMediaPlayer.setOnCompletionListener(this);
-
-        return START_NOT_STICKY;
     }
 
     /** Called when MediaPlayer is ready */
@@ -85,20 +91,23 @@ public class MediaPlayerService extends Service implements MediaPlayer.OnPrepare
         if (isPlayerPaused){
             mMediaPlayer.start();
             isPlayerPaused = false;
+            return;
         }
-        else {
-            mMediaPlayer.reset();
-            Uri musicUri = Uri.parse(path);
-            try {
-                mMediaPlayer.setDataSource(getApplicationContext(), musicUri);
-            } catch (IOException e) {
-                Toast.makeText(MediaPlayerService.this, "Invalid file path", Toast.LENGTH_SHORT).show();
-                //stopSelf();
-                return;
-            }
 
-            mMediaPlayer.prepareAsync(); // prepare async to not block main thread
+        if (mMediaPlayer == null) {
+            initMediaPlayer();
         }
+        mMediaPlayer.reset();
+        Uri musicUri = Uri.parse(path);
+        try {
+            mMediaPlayer.setDataSource(getApplicationContext(), musicUri);
+        } catch (IOException e) {
+            Toast.makeText(MediaPlayerService.this, "Invalid file path", Toast.LENGTH_SHORT).show();
+            //stopSelf();
+            return;
+        }
+
+        mMediaPlayer.prepareAsync(); // prepare async to not block main thread
     }
 
     @Override
@@ -130,11 +139,24 @@ public class MediaPlayerService extends Service implements MediaPlayer.OnPrepare
     //release resources when unbind
     @Override
     public boolean onUnbind(Intent intent){
-        mMediaPlayer.stop();
-        mMediaPlayer.release();
+        Toast.makeText(MediaPlayerService.this, "Unbound", Toast.LENGTH_SHORT).show();
         return false;
     }
 
+
+
+    @Override
+    public void onDestroy(){
+        super.onDestroy();
+        stopAndClearPlayer();
+        stopSelf();
+    }
+
+    public void stopAndClearPlayer() {
+        mMediaPlayer.stop();
+        mMediaPlayer.release();
+        mMediaPlayer = null;
+    }
 
     /*
     public static void start(Context context, String fileName) {
