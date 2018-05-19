@@ -18,6 +18,7 @@ import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.widget.CompoundButton;
+import android.widget.Toast;
 import android.widget.ToggleButton;
 
 import com.google.gson.Gson;
@@ -50,9 +51,12 @@ public class MainActivity extends AppCompatActivity {
     private MediaPlayerService mService;
     private Intent playIntent;
     //binding
-    private boolean musicBound=false;
-    private boolean leftWhilePlaying=false;
+    private boolean musicBound = false;
+
+    // Restore media player state info
+    private boolean leftWhilePlaying = false;   // TODO implement one-time initialization class for this field (field should be read-only after first initialization not counting this line)
     private boolean playButtonCheck;
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -60,29 +64,22 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        initToolbar();
+        restoreMediaPlayerStateInfo();
+        if (playIntent==null)
+            bindAndStartSrv();
 
         ActivityCompat.requestPermissions(this, permissions, REQUEST_READ_EXTERNAL_STORAGE_PERMISSION_ID);  // This call is asynchronous !!!
 
-        playPauseButton = findViewById(R.id.toggleButton_play_pause);
-        playPauseButton.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
-            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
-                if(isChecked){
-                    //Toast.makeText(MainActivity.this, "Service not started", Toast.LENGTH_SHORT).show();
-                    if (playButtonCheck)
-                        playButtonCheck = false;
-                    else
-                        mService.playSong(songsPaths.get(1118));
-                }
-                else
-                {
-                    //Toast.makeText(MainActivity.this, "Service not stopped", Toast.LENGTH_SHORT).show();
-                    mService.pausePlaying();
-                }
-            }
-        });
+        initToolbar();
+        initPlayPauseButton();
+        restorePlayPauseButtonState();
 
         Log.d(LOG_ERR_TAG, "onCreate() end ");
+    }
+
+    private void restoreMediaPlayerStateInfo(){
+        SharedPreferences sharedPref = this.getPreferences(Context.MODE_PRIVATE);
+        playButtonCheck = leftWhilePlaying = sharedPref.getBoolean(KEY_LEFT_WHILE_PLAYING, false);
     }
 
     private void processMusicFiles() {
@@ -96,7 +93,7 @@ public class MainActivity extends AppCompatActivity {
                 folderPath = tempStr;
         }
         //Log.d(LOG_FILES_TAG, "Path: " + folderPath);
-/*  DO THAT IN ADAPTER
+/*  TODO Do below in recyclerview adapter
         MediaMetadataRetriever mmr = new MediaMetadataRetriever();
         mmr.setDataSource(path);
         String authorName = mmr.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE);
@@ -146,9 +143,34 @@ public class MainActivity extends AppCompatActivity {
         if (!permissionToReadExtStorageAccepted ) finish();
         else {
             restoreState();
-            if (playIntent==null) bindAndStartSrv();
-
         }
+    }
+
+    private void initPlayPauseButton() {
+        playPauseButton = findViewById(R.id.toggleButton_play_pause);
+        playPauseButton.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+
+                if(isChecked){
+                    //Toast.makeText(MainActivity.this, "Service not started", Toast.LENGTH_SHORT).show();
+                    if (playButtonCheck)
+                        playButtonCheck = false;
+                    else if (songsPaths == null){
+                        playPauseButton.setChecked(!isChecked);
+                        Toast.makeText(MainActivity.this, "Songs not yet loaded", Toast.LENGTH_SHORT).show();
+                    }
+                    else if (mService != null)
+                        mService.playSong(songsPaths.get(1118));
+                }
+                else
+                {
+                    //Toast.makeText(MainActivity.this, "Service not stopped", Toast.LENGTH_SHORT).show();
+
+                    if (mService != null)
+                        mService.pausePlaying();
+                }
+            }
+        });
     }
 
     //start and bind the service when the activity starts
@@ -222,21 +244,20 @@ public class MainActivity extends AppCompatActivity {
     public void onStop(){
         super.onStop();
         saveSongsArrayState();
-        if(mService.isPlaying()){
-            leftWhilePlaying = true;
+        if(mService != null && mService.isPlaying()){
+            playButtonCheck = true;
             savePlayPauseState();
-            //saveServiceState();
         }
     }
 
     @Override
     public void onDestroy(){
         super.onDestroy();
-        if (!mService.isPlaying()) {
+        if (mService != null && !mService.isPlaying()) {
             MediaPlayerService.stop(MainActivity.this);
         }
         else {
-            leftWhilePlaying = true;
+            playButtonCheck = true;
             savePlayPauseState();
         }
     }
@@ -244,7 +265,7 @@ public class MainActivity extends AppCompatActivity {
     private void savePlayPauseState(){
         SharedPreferences sharedPref = this.getPreferences(Context.MODE_PRIVATE);
         SharedPreferences.Editor prefsEditor = sharedPref.edit();
-        prefsEditor.putBoolean(KEY_LEFT_WHILE_PLAYING, leftWhilePlaying);
+        prefsEditor.putBoolean(KEY_LEFT_WHILE_PLAYING, playButtonCheck);
         prefsEditor.apply();
     }
 
@@ -256,7 +277,7 @@ public class MainActivity extends AppCompatActivity {
         prefsEditor.putString(KEY_SONGS_PATHS, jsonText);
         prefsEditor.apply();
     }
-
+/*
     private void saveServiceState(){
         SharedPreferences sharedPref = this.getPreferences(Context.MODE_PRIVATE);
         SharedPreferences.Editor prefsEditor = sharedPref.edit();
@@ -268,13 +289,15 @@ public class MainActivity extends AppCompatActivity {
         prefsEditor.putString(KEY_PLAY_INTENT, json2);
         prefsEditor.apply();
     }
+*/
 
     private void restoreState(){
-        // Restore songs array
+
         SharedPreferences sharedPref = this.getPreferences(Context.MODE_PRIVATE);
         if (!permissionToReadExtStorageAccepted)
             return;
 
+        // Restore songs array
         if(sharedPref.contains(KEY_SONGS_PATHS)) {
             Gson gson = new Gson();
             String jsonText = sharedPref.getString(KEY_SONGS_PATHS, null);
@@ -283,21 +306,15 @@ public class MainActivity extends AppCompatActivity {
         else
             processMusicFiles();
 
-        // Restore play / pause button state
-        playButtonCheck = leftWhilePlaying = sharedPref.getBoolean(KEY_LEFT_WHILE_PLAYING, false);
-        if(leftWhilePlaying) {
-            playPauseButton.setChecked(!playPauseButton.isChecked());
-/*
-            Gson gson = new Gson();
-            String jsonText = sharedPref.getString(KEY_SERVICE, null);
-            mService = gson.fromJson(jsonText, MediaPlayerService.class);
-            String jsonText2 = sharedPref.getString(KEY_PLAY_INTENT, null);
-            playIntent = gson.fromJson(jsonText2, Intent.class);*/
-        }
-        // Restore service references ^
-
         SharedPreferences.Editor preferencesEditor = sharedPref.edit();
         preferencesEditor.clear();
         preferencesEditor.apply();
+    }
+
+    private void restorePlayPauseButtonState() {
+        // Restore play / pause button state
+        if(leftWhilePlaying) {
+            playPauseButton.setChecked(!playPauseButton.isChecked());
+        }
     }
 }

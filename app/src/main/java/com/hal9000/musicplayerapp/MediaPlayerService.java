@@ -4,20 +4,18 @@ import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
 import android.media.AudioManager;
+import android.media.MediaMetadataRetriever;
 import android.media.MediaPlayer;
 import android.net.Uri;
 import android.os.Binder;
-import android.os.Environment;
 import android.os.IBinder;
 import android.support.v4.app.NotificationCompat;
 import android.support.v4.app.NotificationManagerCompat;
 import android.util.Log;
 import android.widget.Toast;
 
-import java.io.File;
 import java.io.IOException;
 
-import static android.os.Environment.DIRECTORY_MUSIC;
 import static com.hal9000.musicplayerapp.MainActivity.LOG_ERR_TAG;
 
 
@@ -26,12 +24,14 @@ public class MediaPlayerService extends Service implements MediaPlayer.OnPrepare
     private MediaPlayer mMediaPlayer = null;
     int songPos;
     private final String CHANNEL_ID = "notification_channel_id";
-    private final int NOW_PLAYING_NOTIFICTATION_ID = 1;
+    private final int NOW_PLAYING_NOTIFICATION_ID = 1;
     public static final String LOG_FILES_TAG = "FilesX";
     NotificationManagerCompat notificationManager;
     NotificationCompat.Builder notificationBuilder;
     boolean isPlayerPaused = false;
     boolean isPlayerStopped = true;
+    public static final String NOW_PLAYING = "Now playing";
+    public static final String PLAYER_PAUSED = "Player paused";
 
     public void onCreate(){
         //create the service
@@ -51,22 +51,36 @@ public class MediaPlayerService extends Service implements MediaPlayer.OnPrepare
         notificationManager = NotificationManagerCompat.from(this);
 
         notificationBuilder = new NotificationCompat.Builder(this, CHANNEL_ID)
-                .setContentTitle("Title")
-                .setContentText("Now playing")
-                .setSmallIcon(R.mipmap.ic_launcher);
+                .setContentTitle("Media player started")
+                .setSmallIcon(R.mipmap.ic_launcher)
+                .setShowWhen(false);
 
-        notificationManager.notify(NOW_PLAYING_NOTIFICTATION_ID, notificationBuilder.build());
+        notificationManager.notify(NOW_PLAYING_NOTIFICATION_ID, notificationBuilder.build());
 
-        startForeground(NOW_PLAYING_NOTIFICTATION_ID, notificationBuilder.build());
+        startForeground(NOW_PLAYING_NOTIFICATION_ID, notificationBuilder.build());
     }
 
-    private void changeNotificationTitle(String title){
-        notificationBuilder.setContentTitle(title);
-        notificationManager.notify(NOW_PLAYING_NOTIFICTATION_ID, notificationBuilder.build());
+    private void changeNotificationContent(String path){
+        MediaMetadataRetriever mmr = new MediaMetadataRetriever();
+        mmr.setDataSource(path);
+        String temp = mmr.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE);
+        notificationBuilder.setContentTitle(temp);
+        temp = mmr.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ARTIST);
+        notificationBuilder.setContentText(temp);
+        notificationBuilder.setContentInfo(NOW_PLAYING);
+        notificationManager.notify(NOW_PLAYING_NOTIFICATION_ID, notificationBuilder.build());
+    }
+
+    private void changeNotificationContentOnPaused(boolean isPaused){
+        if (isPaused)
+            notificationBuilder.setContentInfo(PLAYER_PAUSED);
+        else
+            notificationBuilder.setContentInfo(NOW_PLAYING);
+        notificationManager.notify(NOW_PLAYING_NOTIFICATION_ID, notificationBuilder.build());
     }
 
     public int onStartCommand(Intent intent, int flags, int startId) {
-        Toast.makeText(MediaPlayerService.this, "Service started", Toast.LENGTH_SHORT).show();
+        //Toast.makeText(MediaPlayerService.this, "Service started", Toast.LENGTH_SHORT).show();    // don't use - causes 'Screen overlay detected popup when user is prompted for permissions
         Log.d(LOG_ERR_TAG, "Service started");
         initMediaPlayer();
 
@@ -91,6 +105,7 @@ public class MediaPlayerService extends Service implements MediaPlayer.OnPrepare
         if (isPlayerPaused){
             mMediaPlayer.start();
             isPlayerPaused = false;
+            changeNotificationContentOnPaused(false);
             return;
         }
 
@@ -108,6 +123,8 @@ public class MediaPlayerService extends Service implements MediaPlayer.OnPrepare
         }
 
         mMediaPlayer.prepareAsync(); // prepare async to not block main thread
+
+        changeNotificationContent(path);
     }
 
     @Override
@@ -116,8 +133,11 @@ public class MediaPlayerService extends Service implements MediaPlayer.OnPrepare
     }
 
     public void pausePlaying(){
-        mMediaPlayer.pause();
-        isPlayerPaused = true;
+        if (mMediaPlayer != null && mMediaPlayer.isPlaying()) {
+            mMediaPlayer.pause();
+            isPlayerPaused = true;
+            changeNotificationContentOnPaused(true);
+        }
     }
 
     public boolean isPlaying(){
