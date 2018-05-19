@@ -8,7 +8,9 @@ import android.content.ServiceConnection;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.os.Environment;
+import android.os.Handler;
 import android.os.IBinder;
+import android.os.Looper;
 import android.support.annotation.NonNull;
 import android.support.v4.app.ActivityCompat;
 import android.support.v7.app.AppCompatActivity;
@@ -17,7 +19,11 @@ import android.support.v7.widget.Toolbar;
 import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
+import android.view.View;
 import android.widget.CompoundButton;
+import android.widget.ImageButton;
+import android.widget.SeekBar;
+import android.widget.TextView;
 import android.widget.Toast;
 import android.widget.ToggleButton;
 
@@ -46,16 +52,25 @@ public class MainActivity extends AppCompatActivity {
     //private ArrayList<Song> songList;
     //private ListView songView;
     private ToggleButton playPauseButton = null;
+    private ImageButton fastRewindButton = null;
+    private ImageButton fastForwardButton = null;
+    private TextView currentSongTitle = null;
+    private SeekBar mSeekBar;
 
     //service
     private MediaPlayerService mService;
     private Intent playIntent;
+    MediaPlayerService.MusicBinder binder;
     //binding
     private boolean musicBound = false;
 
     // Restore media player state info
     private boolean leftWhilePlaying = false;   // TODO implement one-time initialization class for this field (field should be read-only after first initialization not counting this line)
     private boolean playButtonCheck;
+
+    private Handler requestHandler;
+    private Runnable mRunnable;
+
 
 
     @Override
@@ -70,11 +85,52 @@ public class MainActivity extends AppCompatActivity {
 
         ActivityCompat.requestPermissions(this, permissions, REQUEST_READ_EXTERNAL_STORAGE_PERMISSION_ID);  // This call is asynchronous !!!
 
+        requestHandler = new Handler(Looper.getMainLooper());
+
         initToolbar();
         initPlayPauseButton();
         restorePlayPauseButtonState();
+        initTrackNavButtons();
+        currentSongTitle = findViewById(R.id.textView_now_playing_title);
+        mSeekBar = findViewById(R.id.seek_bar);
 
         Log.d(LOG_ERR_TAG, "onCreate() end ");
+    }
+
+    protected void initializeSeekBar(){
+        Log.d(LOG_ERR_TAG, "Inside initializeSeekBar: ");
+        mRunnable = new Runnable() {
+            @Override
+            public void run() {
+                //Log.d(LOG_ERR_TAG, "Inside runnable: ");
+                if(mService!=null && mService.isPlaying()){
+
+                    int mCurrentPosition = mService.getCurrentPlayerPosition()/1000; // In milliseconds
+                    mSeekBar.setProgress(mCurrentPosition);
+                    //currentSongTitle.setText('a');
+                }
+                requestHandler.postDelayed(mRunnable,250);
+            }
+        };
+        requestHandler.postDelayed(mRunnable,1000);
+    }
+
+    private void initTrackNavButtons() {
+        fastRewindButton = findViewById(R.id.imageButton_fast_rewind);
+        fastRewindButton.setOnClickListener(new ImageButton.OnClickListener(){
+            @Override
+            public void onClick(View v){
+                mService.moveForward(-10000); // +10 sec
+            }
+        });
+
+        fastForwardButton = findViewById(R.id.imageButton_fast_forward);
+        fastForwardButton.setOnClickListener(new ImageButton.OnClickListener(){
+            @Override
+            public void onClick(View v){
+                mService.moveForward(10000); // +10 sec
+            }
+        });
     }
 
     private void restoreMediaPlayerStateInfo(){
@@ -153,21 +209,29 @@ public class MainActivity extends AppCompatActivity {
 
                 if(isChecked){
                     //Toast.makeText(MainActivity.this, "Service not started", Toast.LENGTH_SHORT).show();
-                    if (playButtonCheck)
+
+                    if (playButtonCheck) {  // service was running & playing before activity was launched
                         playButtonCheck = false;
+                    }
                     else if (songsPaths == null){
                         playPauseButton.setChecked(!isChecked);
                         Toast.makeText(MainActivity.this, "Songs not yet loaded", Toast.LENGTH_SHORT).show();
+                        return;
                     }
                     else if (mService != null)
-                        mService.playSong(songsPaths.get(1118));
+                        mService.playSong(songsPaths.get(595));
+                    initializeSeekBar();
                 }
                 else
                 {
                     //Toast.makeText(MainActivity.this, "Service not stopped", Toast.LENGTH_SHORT).show();
 
-                    if (mService != null)
+                    if (mService != null) {
                         mService.pausePlaying();
+                        if (requestHandler != null) {
+                            requestHandler.removeCallbacks(mRunnable);
+                        }
+                    }
                 }
             }
         });
@@ -226,17 +290,23 @@ public class MainActivity extends AppCompatActivity {
 
         @Override
         public void onServiceConnected(ComponentName name, IBinder service) {
-            MediaPlayerService.MusicBinder binder = (MediaPlayerService.MusicBinder)service;
+            binder = (MediaPlayerService.MusicBinder)service;
             //get service
             mService = binder.getService();
             //pass list
             //mService.setList(songList);
             musicBound = true;
+            binder.registerActivity(MainActivity.this, listener);
+
+            if (mService.isPlaying()){
+                mSeekBar.setMax(mService.getPlayerDuration()/1000);
+            }
         }
 
         @Override
         public void onServiceDisconnected(ComponentName name) {
             musicBound = false;
+            binder = null;
         }
     };
 
@@ -259,6 +329,13 @@ public class MainActivity extends AppCompatActivity {
         else {
             playButtonCheck = true;
             savePlayPauseState();
+        }
+        if (binder != null)
+            binder.unregisterActivity(this);
+        if (mService != null)
+            unbindService(musicConnection);
+        if (requestHandler != null) {
+            requestHandler.removeCallbacks(mRunnable);
         }
     }
 
@@ -317,4 +394,12 @@ public class MainActivity extends AppCompatActivity {
             playPauseButton.setChecked(!playPauseButton.isChecked());
         }
     }
+
+    // Callback for service to use to notify activity about something
+    private IListenerFunctions listener = new IListenerFunctions() {
+        public void setSeekBarMaxDuration(int maxDuration) {    // in ms
+            if (mSeekBar != null)
+                mSeekBar.setMax(maxDuration/1000);
+        }
+    };
 }

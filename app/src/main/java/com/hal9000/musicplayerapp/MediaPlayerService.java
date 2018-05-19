@@ -1,5 +1,6 @@
 package com.hal9000.musicplayerapp;
 
+import android.app.Activity;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
@@ -15,6 +16,9 @@ import android.util.Log;
 import android.widget.Toast;
 
 import java.io.IOException;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 import static com.hal9000.musicplayerapp.MainActivity.LOG_ERR_TAG;
 
@@ -32,6 +36,8 @@ public class MediaPlayerService extends Service implements MediaPlayer.OnPrepare
     boolean isPlayerStopped = true;
     public static final String NOW_PLAYING = "Now playing";
     public static final String PLAYER_PAUSED = "Player paused";
+
+    private Map<Activity, IListenerFunctions> clients = new ConcurrentHashMap<Activity, IListenerFunctions>();
 
     public void onCreate(){
         //create the service
@@ -94,10 +100,22 @@ public class MediaPlayerService extends Service implements MediaPlayer.OnPrepare
         mMediaPlayer.setOnCompletionListener(this);
     }
 
+    public int getPlayerDuration(){
+        return mMediaPlayer == null ? -1 : mMediaPlayer.getDuration();
+    }
+
+    public int getCurrentPlayerPosition(){
+        return mMediaPlayer == null ? -1 : mMediaPlayer.getCurrentPosition();
+    }
+
     /** Called when MediaPlayer is ready */
     public void onPrepared(MediaPlayer player) {
         player.start();
         isPlayerStopped = false;
+        for (Activity client : clients.keySet()) {
+            clients.get(client).setSeekBarMaxDuration(player.getDuration());
+            Log.d(LOG_ERR_TAG, "onPrepared(): player.getDuration() = " + player.getDuration());
+        }
     }
 
     public void playSong(String path){
@@ -106,25 +124,27 @@ public class MediaPlayerService extends Service implements MediaPlayer.OnPrepare
             mMediaPlayer.start();
             isPlayerPaused = false;
             changeNotificationContentOnPaused(false);
-            return;
+        }
+        else {
+
+            if (mMediaPlayer == null) {
+                initMediaPlayer();
+            }
+            mMediaPlayer.reset();
+            Uri musicUri = Uri.parse(path);
+            try {
+                mMediaPlayer.setDataSource(getApplicationContext(), musicUri);
+            } catch (IOException e) {
+                Toast.makeText(MediaPlayerService.this, "Invalid file path", Toast.LENGTH_SHORT).show();
+                //stopSelf();
+                return;
+            }
+
+            mMediaPlayer.prepareAsync(); // prepare async to not block main thread
+
+            changeNotificationContent(path);
         }
 
-        if (mMediaPlayer == null) {
-            initMediaPlayer();
-        }
-        mMediaPlayer.reset();
-        Uri musicUri = Uri.parse(path);
-        try {
-            mMediaPlayer.setDataSource(getApplicationContext(), musicUri);
-        } catch (IOException e) {
-            Toast.makeText(MediaPlayerService.this, "Invalid file path", Toast.LENGTH_SHORT).show();
-            //stopSelf();
-            return;
-        }
-
-        mMediaPlayer.prepareAsync(); // prepare async to not block main thread
-
-        changeNotificationContent(path);
     }
 
     @Override
@@ -150,9 +170,17 @@ public class MediaPlayerService extends Service implements MediaPlayer.OnPrepare
     }
 
     //binder
-    public class MusicBinder extends Binder {
+    public class MusicBinder extends Binder{
         MediaPlayerService getService() {
             return MediaPlayerService.this;
+        }
+
+        public void registerActivity(Activity activity, IListenerFunctions callback){
+            clients.put(activity, callback);
+        }
+
+        public void unregisterActivity(Activity activity) {
+            clients.remove(activity);
         }
     }
 
@@ -163,13 +191,17 @@ public class MediaPlayerService extends Service implements MediaPlayer.OnPrepare
         return false;
     }
 
-
-
     @Override
     public void onDestroy(){
         super.onDestroy();
         stopAndClearPlayer();
         stopSelf();
+    }
+
+    public void moveForward(int msec){
+        if (mMediaPlayer != null && mMediaPlayer.isPlaying()){
+            mMediaPlayer.seekTo(mMediaPlayer.getCurrentPosition() + msec);
+        }
     }
 
     public void stopAndClearPlayer() {
