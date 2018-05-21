@@ -32,8 +32,9 @@ public class MediaPlayerService extends Service implements MediaPlayer.OnPrepare
     public static final String LOG_FILES_TAG = "FilesX";
     NotificationManagerCompat notificationManager;
     NotificationCompat.Builder notificationBuilder;
-    boolean isPlayerPaused = false;
-    boolean isPlayerStopped = true;
+    private boolean isPlayerPaused = false;
+    private boolean isPlayerStopped = true;
+    private boolean hasSongPath = false;    // flag to prevent certain actions when player hasn't been initialized with any song path yet
     public static final String NOW_PLAYING = "Now playing";
     public static final String PLAYER_PAUSED = "Player paused";
 
@@ -49,6 +50,7 @@ public class MediaPlayerService extends Service implements MediaPlayer.OnPrepare
         //initialize
         //initMusicPlayer();
         //Toast.makeText(MediaPlayerService.this, "Service started", Toast.LENGTH_SHORT).show();
+
         showLocationNotification();
     }
 
@@ -112,6 +114,7 @@ public class MediaPlayerService extends Service implements MediaPlayer.OnPrepare
     public void onPrepared(MediaPlayer player) {
         player.start();
         isPlayerStopped = false;
+        hasSongPath = true;
         for (Activity client : clients.keySet()) {
             clients.get(client).setSeekBarMaxDuration(player.getDuration());
             Log.d(LOG_ERR_TAG, "onPrepared(): player.getDuration() = " + player.getDuration());
@@ -150,6 +153,12 @@ public class MediaPlayerService extends Service implements MediaPlayer.OnPrepare
     @Override
     public void onCompletion(MediaPlayer mp) {
         isPlayerStopped = true;
+        if (isPlayerInitialized()) {
+            for (Activity client : clients.keySet()) {
+                clients.get(client).onMediaPlayerCompletion();
+                //Log.d(LOG_ERR_TAG, "Service.onCreate(): player.onCompletion());
+            }
+        }
     }
 
     public void pausePlaying(){
@@ -163,6 +172,12 @@ public class MediaPlayerService extends Service implements MediaPlayer.OnPrepare
     public boolean isPlaying(){
         return !isPlayerPaused && !isPlayerStopped;
     }
+
+    public boolean isPlayerPaused() { return isPlayerPaused; }
+
+    public boolean isPlayerStopped() { return isPlayerStopped; }
+
+    public boolean isPlayerInitialized() { return hasSongPath; }    // initialized in a sense that it has a song path that can be played
 
     @Override
     public IBinder onBind(Intent intent) {
@@ -187,7 +202,7 @@ public class MediaPlayerService extends Service implements MediaPlayer.OnPrepare
     //release resources when unbind
     @Override
     public boolean onUnbind(Intent intent){
-        Toast.makeText(MediaPlayerService.this, "Unbound", Toast.LENGTH_SHORT).show();
+        Toast.makeText(MediaPlayerService.this, "Service unbound", Toast.LENGTH_SHORT).show();
         return false;
     }
 
@@ -199,9 +214,19 @@ public class MediaPlayerService extends Service implements MediaPlayer.OnPrepare
     }
 
     public void moveForward(int msec){
-        if (mMediaPlayer != null && mMediaPlayer.isPlaying()){
-            mMediaPlayer.seekTo(mMediaPlayer.getCurrentPosition() + msec);
+        setPlayerPosition(mMediaPlayer.getCurrentPosition() + msec);
+    }
+
+    public void setPlayerPosition(int msec){
+        if (mMediaPlayer != null){
+            mMediaPlayer.seekTo(msec);
+            if (isPlayerStopped) {
+                isPlayerPaused = true;
+                isPlayerStopped = false;
+            }
         }
+        else
+            Log.d(LOG_ERR_TAG, "setPlayerPosition(): mMediaPlayer == null");
     }
 
     public void stopAndClearPlayer() {

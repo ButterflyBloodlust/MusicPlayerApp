@@ -66,7 +66,7 @@ public class MainActivity extends AppCompatActivity {
 
     // Restore media player state info
     private boolean leftWhilePlaying = false;   // TODO implement one-time initialization class for this field (field should be read-only after first initialization not counting this line)
-    private boolean playButtonCheck;
+    private boolean playButtonUnusualState;
 
     private Handler requestHandler;
     private Runnable mRunnable;
@@ -92,18 +92,43 @@ public class MainActivity extends AppCompatActivity {
         restorePlayPauseButtonState();
         initTrackNavButtons();
         currentSongTitle = findViewById(R.id.textView_now_playing_title);
-        mSeekBar = findViewById(R.id.seek_bar);
+        initializeSeekBar();
 
         Log.d(LOG_ERR_TAG, "onCreate() end ");
     }
 
-    protected void initializeSeekBar(){
-        Log.d(LOG_ERR_TAG, "Inside initializeSeekBar: ");
+    private void initializeSeekBar() {
+        mSeekBar = findViewById(R.id.seek_bar);
+
+        // Set a change listener for seek bar
+        mSeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int newProgress, boolean isFromUser) {   // newProgress is in seconds
+                if(mService != null && isFromUser){
+                    if(mService.isPlayerInitialized())
+                        mService.setPlayerPosition(newProgress*1000);
+                    else
+                        seekBar.setProgress(0);
+                }
+            }
+
+            @Override
+            public void onStartTrackingTouch(SeekBar seekBar) {
+            }
+
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {
+            }
+        });
+    }
+
+    protected void initializeSeekBarRunnable(){
+        Log.d(LOG_ERR_TAG, "Inside initializeSeekBarRunnable: ");
         mRunnable = new Runnable() {
             @Override
             public void run() {
                 //Log.d(LOG_ERR_TAG, "Inside runnable: ");
-                if(mService!=null && mService.isPlaying()){
+                if(mService!=null){
 
                     int mCurrentPosition = mService.getCurrentPlayerPosition()/1000; // In milliseconds
                     mSeekBar.setProgress(mCurrentPosition);
@@ -112,7 +137,7 @@ public class MainActivity extends AppCompatActivity {
                 requestHandler.postDelayed(mRunnable,250);
             }
         };
-        requestHandler.postDelayed(mRunnable,1000);
+        requestHandler.post(mRunnable);
     }
 
     private void initTrackNavButtons() {
@@ -135,7 +160,7 @@ public class MainActivity extends AppCompatActivity {
 
     private void restoreMediaPlayerStateInfo(){
         SharedPreferences sharedPref = this.getPreferences(Context.MODE_PRIVATE);
-        playButtonCheck = leftWhilePlaying = sharedPref.getBoolean(KEY_LEFT_WHILE_PLAYING, false);
+        playButtonUnusualState = leftWhilePlaying = sharedPref.getBoolean(KEY_LEFT_WHILE_PLAYING, false);
     }
 
     private void processMusicFiles() {
@@ -210,27 +235,26 @@ public class MainActivity extends AppCompatActivity {
                 if(isChecked){
                     //Toast.makeText(MainActivity.this, "Service not started", Toast.LENGTH_SHORT).show();
 
-                    if (playButtonCheck) {  // service was running & playing before activity was launched
-                        playButtonCheck = false;
+                    if (playButtonUnusualState) {  // service was running & playing before activity was launched
+                        playButtonUnusualState = false;
                     }
                     else if (songsPaths == null){
                         playPauseButton.setChecked(!isChecked);
-                        Toast.makeText(MainActivity.this, "Songs not yet loaded", Toast.LENGTH_SHORT).show();
+                        Toast.makeText(MainActivity.this, "Song not yet loaded", Toast.LENGTH_SHORT).show();
                         return;
                     }
                     else if (mService != null)
                         mService.playSong(songsPaths.get(595));
-                    initializeSeekBar();
+                    initializeSeekBarRunnable();
                 }
                 else
                 {
                     //Toast.makeText(MainActivity.this, "Service not stopped", Toast.LENGTH_SHORT).show();
-
-                    if (mService != null) {
+                    if (playButtonUnusualState){
+                        playButtonUnusualState = false;
+                    }
+                    else if (mService != null) {
                         mService.pausePlaying();
-                        if (requestHandler != null) {
-                            requestHandler.removeCallbacks(mRunnable);
-                        }
                     }
                 }
             }
@@ -315,7 +339,7 @@ public class MainActivity extends AppCompatActivity {
         super.onStop();
         saveSongsArrayState();
         if(mService != null && mService.isPlaying()){
-            playButtonCheck = true;
+            playButtonUnusualState = true;
             savePlayPauseState();
         }
     }
@@ -327,7 +351,7 @@ public class MainActivity extends AppCompatActivity {
             MediaPlayerService.stop(MainActivity.this);
         }
         else {
-            playButtonCheck = true;
+            playButtonUnusualState = true;
             savePlayPauseState();
         }
         if (binder != null)
@@ -342,7 +366,7 @@ public class MainActivity extends AppCompatActivity {
     private void savePlayPauseState(){
         SharedPreferences sharedPref = this.getPreferences(Context.MODE_PRIVATE);
         SharedPreferences.Editor prefsEditor = sharedPref.edit();
-        prefsEditor.putBoolean(KEY_LEFT_WHILE_PLAYING, playButtonCheck);
+        prefsEditor.putBoolean(KEY_LEFT_WHILE_PLAYING, playButtonUnusualState);
         prefsEditor.apply();
     }
 
@@ -400,6 +424,10 @@ public class MainActivity extends AppCompatActivity {
         public void setSeekBarMaxDuration(int maxDuration) {    // in ms
             if (mSeekBar != null)
                 mSeekBar.setMax(maxDuration/1000);
+        }
+        public void onMediaPlayerCompletion(){
+            playButtonUnusualState = true;
+            playPauseButton.setChecked(!playPauseButton.isChecked());
         }
     };
 }
