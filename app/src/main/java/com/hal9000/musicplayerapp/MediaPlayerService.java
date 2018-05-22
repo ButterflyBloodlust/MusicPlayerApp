@@ -4,18 +4,21 @@ import android.app.Activity;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
+import android.graphics.BitmapFactory;
 import android.media.AudioManager;
 import android.media.MediaMetadataRetriever;
 import android.media.MediaPlayer;
 import android.net.Uri;
 import android.os.Binder;
 import android.os.IBinder;
+import android.support.annotation.NonNull;
 import android.support.v4.app.NotificationCompat;
 import android.support.v4.app.NotificationManagerCompat;
 import android.util.Log;
 import android.widget.Toast;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -26,6 +29,7 @@ import static com.hal9000.musicplayerapp.MainActivity.LOG_ERR_TAG;
 public class MediaPlayerService extends Service implements MediaPlayer.OnPreparedListener, MediaPlayer.OnCompletionListener{
     private final IBinder musicBind = new MusicBinder();
     private MediaPlayer mMediaPlayer = null;
+    ArrayList<String> songsPaths = null;
     int songPos;
     private final String CHANNEL_ID = "notification_channel_id";
     private final int NOW_PLAYING_NOTIFICATION_ID = 1;
@@ -37,6 +41,7 @@ public class MediaPlayerService extends Service implements MediaPlayer.OnPrepare
     private boolean hasSongPath = false;    // flag to prevent certain actions when player hasn't been initialized with any song path yet
     public static final String NOW_PLAYING = "Now playing";
     public static final String PLAYER_PAUSED = "Player paused";
+    MediaMetadataRetriever mmr = new MediaMetadataRetriever();
 
     private Map<Activity, IListenerFunctions> clients = new ConcurrentHashMap<Activity, IListenerFunctions>();
 
@@ -54,6 +59,10 @@ public class MediaPlayerService extends Service implements MediaPlayer.OnPrepare
         showLocationNotification();
     }
 
+    public void setNewSongPaths(@NonNull ArrayList<String> newSongsPaths){
+        songsPaths = newSongsPaths;
+    }
+
     private void showLocationNotification()
     {
         notificationManager = NotificationManagerCompat.from(this);
@@ -69,7 +78,6 @@ public class MediaPlayerService extends Service implements MediaPlayer.OnPrepare
     }
 
     private void changeNotificationContent(String path){
-        MediaMetadataRetriever mmr = new MediaMetadataRetriever();
         mmr.setDataSource(path);
         String temp = mmr.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE);
         notificationBuilder.setContentTitle(temp);
@@ -121,7 +129,7 @@ public class MediaPlayerService extends Service implements MediaPlayer.OnPrepare
         }
     }
 
-    public void playSong(String path){
+    public boolean playSong(int position){
 
         if (isPlayerPaused){
             mMediaPlayer.start();
@@ -134,20 +142,27 @@ public class MediaPlayerService extends Service implements MediaPlayer.OnPrepare
                 initMediaPlayer();
             }
             mMediaPlayer.reset();
-            Uri musicUri = Uri.parse(path);
+            Uri musicUri = null;
+            if (songsPaths != null && position < songsPaths.size()){
+                musicUri = Uri.parse(songsPaths.get(position));
+            }
+            else{
+                Toast.makeText(MediaPlayerService.this, "Invalid song position", Toast.LENGTH_SHORT).show();
+                return false;
+            }
             try {
                 mMediaPlayer.setDataSource(getApplicationContext(), musicUri);
+                songPos = position;
             } catch (IOException e) {
                 Toast.makeText(MediaPlayerService.this, "Invalid file path", Toast.LENGTH_SHORT).show();
                 //stopSelf();
-                return;
+                return false;
             }
-
             mMediaPlayer.prepareAsync(); // prepare async to not block main thread
 
-            changeNotificationContent(path);
+            changeNotificationContent(songsPaths.get(position));
         }
-
+        return true;
     }
 
     @Override
@@ -169,6 +184,15 @@ public class MediaPlayerService extends Service implements MediaPlayer.OnPrepare
         }
     }
 
+    public void stopPlaying(){
+        if (mMediaPlayer != null && (mMediaPlayer.isPlaying() || isPlayerPaused)) {
+            mMediaPlayer.reset();
+            isPlayerPaused = false;
+            isPlayerStopped = true;
+            changeNotificationContentOnPaused(true);
+        }
+    }
+
     public boolean isPlaying(){
         return !isPlayerPaused && !isPlayerStopped;
     }
@@ -178,6 +202,15 @@ public class MediaPlayerService extends Service implements MediaPlayer.OnPrepare
     public boolean isPlayerStopped() { return isPlayerStopped; }
 
     public boolean isPlayerInitialized() { return hasSongPath; }    // initialized in a sense that it has a song path that can be played
+
+    public String getCurrentSongTitle() {
+        if (mMediaPlayer != null && !songsPaths.isEmpty()) {
+            mmr.setDataSource(songsPaths.get(songPos));
+            return mmr.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE);
+        }
+        else
+            return "";
+    }
 
     @Override
     public IBinder onBind(Intent intent) {
@@ -230,9 +263,12 @@ public class MediaPlayerService extends Service implements MediaPlayer.OnPrepare
     }
 
     public void stopAndClearPlayer() {
-        mMediaPlayer.stop();
-        mMediaPlayer.release();
-        mMediaPlayer = null;
+        if (mMediaPlayer != null) {
+            mMediaPlayer.stop();
+            mMediaPlayer.release();
+            mMediaPlayer = null;
+            songPos = 0;
+        }
     }
 
     /*

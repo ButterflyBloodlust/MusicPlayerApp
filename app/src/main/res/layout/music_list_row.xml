@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="fill_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:minHeight="80dp"
+    android:gravity="center"
+    android:padding="5dip" >
+
+    <TextView
+        android:id="@+id/textView_song_title"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_alignParentStart="true"
+        android:layout_alignTop="@+id/movie_play_button"
+        android:layout_toStartOf="@+id/textView_song_duration"
+        android:text="Title"
+        android:textColor="#2CFF00"
+        android:textSize="21sp"
+        android:typeface="sans" />
+
+    <TextView
+        android:id="@+id/textView_author"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_below="@id/textView_song_title"
+        android:textColor="#b4a5ff"
+        android:layout_marginTop="1dip"
+        android:textSize="21sp"
+        android:text="Author"/>
+
+    <TextView
+        android:id="@+id/textView_song_duration"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_alignBaseline="@+id/textView_song_title"
+        android:layout_alignBottom="@+id/textView_song_title"
+        android:layout_toStartOf="@+id/movie_play_button"
+        android:text="99:99"
+        android:textAlignment="textEnd"
+        android:textColor="#2CFF00"
+        android:textSize="21sp" />
+
+    <ImageButton
+        android:id="@+id/movie_play_button"
+        android:layout_width="50dp"
+        android:layout_height="50dp"
+        android:padding="3dip"
+        android:foregroundGravity="center_vertical"
+        android:layout_alignParentRight="true"
+        android:layout_marginRight="5dip"
+        android:background="@drawable/ic_play_circle_outline_green_50dp">
+    </ImageButton>
+
+    <!-- android:layout_centerVertical="true" -->
+</RelativeLayout>

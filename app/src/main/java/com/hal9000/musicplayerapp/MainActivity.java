@@ -15,6 +15,9 @@ import android.support.annotation.NonNull;
 import android.support.v4.app.ActivityCompat;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
+import android.support.v7.widget.DividerItemDecoration;
+import android.support.v7.widget.LinearLayoutManager;
+import android.support.v7.widget.RecyclerView;
 import android.support.v7.widget.Toolbar;
 import android.util.Log;
 import android.view.Menu;
@@ -66,12 +69,14 @@ public class MainActivity extends AppCompatActivity {
 
     // Restore media player state info
     private boolean leftWhilePlaying = false;   // TODO implement one-time initialization class for this field (field should be read-only after first initialization not counting this line)
-    private boolean playButtonUnusualState;
+    private boolean playButtonUnusualState;     // for switching play/pause button state without any effects
 
     private Handler requestHandler;
     private Runnable mRunnable;
 
-
+    private RecyclerView mRecyclerView;
+    private SongListRecAdapter mAdapter;
+    private RecyclerView.LayoutManager mLayoutManager;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -86,15 +91,55 @@ public class MainActivity extends AppCompatActivity {
         ActivityCompat.requestPermissions(this, permissions, REQUEST_READ_EXTERNAL_STORAGE_PERMISSION_ID);  // This call is asynchronous !!!
 
         requestHandler = new Handler(Looper.getMainLooper());
+        currentSongTitle = findViewById(R.id.textView_now_playing_title);
 
         initToolbar();
         initPlayPauseButton();
         restorePlayPauseButtonState();
         initTrackNavButtons();
-        currentSongTitle = findViewById(R.id.textView_now_playing_title);
         initializeSeekBar();
 
         Log.d(LOG_ERR_TAG, "onCreate() end ");
+    }
+
+    private void initializeSongsRecyclerView() {
+        mRecyclerView = findViewById(R.id.main_activity_recycler_view);
+
+        // use this setting to improve performance if you know that changes
+        // in content do not change the layout size of the RecyclerView
+        mRecyclerView.setHasFixedSize(true);
+
+        // use a linear layout manager
+        mLayoutManager = new LinearLayoutManager(this);
+        mRecyclerView.setLayoutManager(mLayoutManager);
+        addListElemDivider();
+        specifyAdapter();
+
+        mAdapter.notifyDataSetChanged();
+    }
+
+    private void addListElemDivider() {
+        // add divider to RecycleView
+        DividerItemDecoration listDivider = new DividerItemDecoration(this, LinearLayoutManager.VERTICAL);
+        listDivider.setDrawable(this.getResources().getDrawable(R.drawable.song_list_divider_line, null));
+        mRecyclerView.addItemDecoration(listDivider);
+    }
+
+    private void specifyAdapter() {
+        mAdapter = new SongListRecAdapter(songsPaths, new SongListRecAdapter.ClickListener(){
+            @Override
+            public void onItemPlayButtonClick(int position){
+                if (mService != null && mService.playSong(position)){
+                    currentSongTitle.setText(mService.getCurrentSongTitle());
+                    if (!playPauseButton.isChecked()) {
+                        playButtonUnusualState = true;
+                        playPauseButton.setChecked(!playPauseButton.isChecked());
+                    }
+                }
+            }
+        });
+        mRecyclerView.setAdapter(mAdapter);
+
     }
 
     private void initializeSeekBar() {
@@ -129,10 +174,8 @@ public class MainActivity extends AppCompatActivity {
             public void run() {
                 //Log.d(LOG_ERR_TAG, "Inside runnable: ");
                 if(mService!=null){
-
                     int mCurrentPosition = mService.getCurrentPlayerPosition()/1000; // In milliseconds
                     mSeekBar.setProgress(mCurrentPosition);
-                    //currentSongTitle.setText('a');
                 }
                 requestHandler.postDelayed(mRunnable,250);
             }
@@ -174,11 +217,6 @@ public class MainActivity extends AppCompatActivity {
                 folderPath = tempStr;
         }
         //Log.d(LOG_FILES_TAG, "Path: " + folderPath);
-/*  TODO Do below in recyclerview adapter
-        MediaMetadataRetriever mmr = new MediaMetadataRetriever();
-        mmr.setDataSource(path);
-        String authorName = mmr.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE);
-        */
         File file = new File(folderPath);
         files = file.listFiles();
         int songsCount = getFilesCount(file);
@@ -224,6 +262,8 @@ public class MainActivity extends AppCompatActivity {
         if (!permissionToReadExtStorageAccepted ) finish();
         else {
             restoreState();
+            mService.setNewSongPaths(songsPaths);
+            initializeSongsRecyclerView();
         }
     }
 
@@ -243,8 +283,11 @@ public class MainActivity extends AppCompatActivity {
                         Toast.makeText(MainActivity.this, "Song not yet loaded", Toast.LENGTH_SHORT).show();
                         return;
                     }
-                    else if (mService != null)
-                        mService.playSong(songsPaths.get(595));
+                    else if (mService != null) {
+                        if (!mService.playSong(595))
+                            playPauseButton.setChecked(!isChecked);
+                        currentSongTitle.setText(mService.getCurrentSongTitle());
+                    }
                     initializeSeekBarRunnable();
                 }
                 else
@@ -324,6 +367,7 @@ public class MainActivity extends AppCompatActivity {
 
             if (mService.isPlaying()){
                 mSeekBar.setMax(mService.getPlayerDuration()/1000);
+                currentSongTitle.setText(mService.getCurrentSongTitle());
             }
         }
 

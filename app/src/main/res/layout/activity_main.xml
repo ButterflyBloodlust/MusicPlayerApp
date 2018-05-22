@@ -20,32 +20,38 @@
     <android.support.v7.widget.RecyclerView
         android:scrollbars="vertical"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:id="@+id/main_activity__recycler_view"
-        android:layout_weight="8">
-
+        android:layout_height="match_parent"
+        android:id="@+id/main_activity_recycler_view"
+        android:layout_weight="200">
     </android.support.v7.widget.RecyclerView>
+
+    <View style="@style/Divider" />
 
     <TextView
     android:id="@+id/textView_now_playing_title"
     android:layout_width="wrap_content"
     android:layout_height="wrap_content"
-    android:textSize="25sp"
+    android:textSize="21sp"
     android:gravity="center"
-    android:layout_weight="1" />
+    android:layout_weight="1"
+    android:padding="5dp"
+    android:textColor="#ecfc71"
+    android:text="Title"/>
     
     <SeekBar
     android:id="@+id/seek_bar"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_weight="1"/>
+    android:layout_weight="1"
+    android:padding="8dp"/>
     
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
         android:gravity="center"
-        android:layout_marginBottom="15dp">
+        android:padding="10dp"
+        android:layout_weight="1">
 
         <ImageButton
             android:id="@+id/imageButton_fast_rewind"
