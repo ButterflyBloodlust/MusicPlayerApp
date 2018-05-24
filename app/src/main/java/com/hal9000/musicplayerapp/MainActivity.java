@@ -11,6 +11,7 @@ import android.os.Environment;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
+import android.preference.PreferenceManager;
 import android.support.annotation.NonNull;
 import android.support.v4.app.ActivityCompat;
 import android.support.v7.app.AppCompatActivity;
@@ -36,6 +37,9 @@ import java.io.File;
 import java.util.ArrayList;
 
 import static com.hal9000.musicplayerapp.MediaPlayerService.LOG_FILES_TAG;
+import static com.hal9000.musicplayerapp.SettingsActivity.GeneralPreferenceFragment.KEY_CHOOSE_MUSIC_DIR;
+import static com.hal9000.musicplayerapp.SettingsActivity.wasPathModified;
+import static com.hal9000.musicplayerapp.SettingsActivity.wereModified;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -70,6 +74,8 @@ public class MainActivity extends AppCompatActivity {
     // Restore media player state info
     private boolean leftWhilePlaying = false;   // TODO implement one-time initialization class for this field (field should be read-only after first initialization not counting this line)
     private boolean playButtonUnusualState;     // for switching play/pause button state without any effects
+    private boolean enteredSettings = false;
+    private boolean isMoveForwadCompleted = true;
 
     private Handler requestHandler;
     private Runnable mRunnable;
@@ -126,20 +132,21 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void specifyAdapter() {
-        mAdapter = new SongListRecAdapter(songsPaths, new SongListRecAdapter.ClickListener(){
-            @Override
-            public void onItemPlayButtonClick(int position){
-                if (mService != null && mService.playSong(position)){
-                    currentSongTitle.setText(mService.getCurrentSongTitle());
-                    if (!playPauseButton.isChecked()) {
-                        playButtonUnusualState = true;
-                        playPauseButton.setChecked(!playPauseButton.isChecked());
-                    }
+        mAdapter = new SongListRecAdapter(songsPaths, new SongListRecAdapterClickListener());
+        mRecyclerView.setAdapter(mAdapter);
+    }
+
+    private class SongListRecAdapterClickListener implements SongListRecAdapter.ClickListener{
+        @Override
+        public void onItemPlayButtonClick(int position){
+            if (mService != null && mService.playSong(position)){
+                currentSongTitle.setText(mService.getCurrentSongTitle());
+                if (!playPauseButton.isChecked()) {
+                    playButtonUnusualState = true;
+                    playPauseButton.setChecked(!playPauseButton.isChecked());
                 }
             }
-        });
-        mRecyclerView.setAdapter(mAdapter);
-
+        }
     }
 
     private void initializeSeekBar() {
@@ -196,7 +203,10 @@ public class MainActivity extends AppCompatActivity {
         fastForwardButton.setOnClickListener(new ImageButton.OnClickListener(){
             @Override
             public void onClick(View v){
-                mService.moveForward(10000); // +10 sec
+                if (isMoveForwadCompleted) {
+                    isMoveForwadCompleted = false;
+                    mService.moveForward(10000); // +10 sec
+                }
             }
         });
     }
@@ -206,16 +216,8 @@ public class MainActivity extends AppCompatActivity {
         playButtonUnusualState = leftWhilePlaying = sharedPref.getBoolean(KEY_LEFT_WHILE_PLAYING, false);
     }
 
-    private void processMusicFiles() {
-        File[] files = getExternalFilesDirs(Environment.MEDIA_MOUNTED);
-        String folderPath = "";
-        for (int i = files.length - 1; i >= 0 && folderPath.length() == 0; i--){
-            String tempStr = files[i].getAbsolutePath();
-            tempStr = tempStr.substring(0, tempStr.indexOf("/Android/")) + "/Music/";
-            //Log.d(LOG_FILES_TAG, "Path_temp: " + tempStr);
-            if (new File(tempStr).exists())
-                folderPath = tempStr;
-        }
+    private void processMusicFiles(String folderPath) {
+        File[] files;
         //Log.d(LOG_FILES_TAG, "Path: " + folderPath);
         File file = new File(folderPath);
         files = file.listFiles();
@@ -228,6 +230,21 @@ public class MainActivity extends AppCompatActivity {
             String path = songsPaths.get(i);
             Log.d(LOG_FILES_TAG, i + ": File path: " + path);
         }
+    }
+
+    @NonNull
+    private String getDefaultMusicFolderPath() {
+        File[] files = getExternalFilesDirs(Environment.MEDIA_MOUNTED);
+        String folderPath = "";
+        //for (int i = files.length - 1; i >= 0 && folderPath.length() == 0; i--){
+        for (int i = 0; i < files.length && folderPath.length() == 0; i--){
+            String tempStr = files[i].getAbsolutePath();
+            tempStr = tempStr.substring(0, tempStr.indexOf("/Android/")) + "/Music/";
+            //Log.d(LOG_FILES_TAG, "Path_temp: " + tempStr);
+            if (new File(tempStr).exists())
+                folderPath = tempStr;
+        }
+        return folderPath;
     }
 
     public int getFilesCount(File dir) {
@@ -262,7 +279,8 @@ public class MainActivity extends AppCompatActivity {
         if (!permissionToReadExtStorageAccepted ) finish();
         else {
             restoreState();
-            mService.setNewSongPaths(songsPaths);
+            if (!mService.isPlaying())
+                mService.setNewSongPaths(songsPaths);
             initializeSongsRecyclerView();
         }
     }
@@ -284,7 +302,7 @@ public class MainActivity extends AppCompatActivity {
                         return;
                     }
                     else if (mService != null) {
-                        if (!mService.playSong(595))
+                        if (!mService.playSong())
                             playPauseButton.setChecked(!isChecked);
                         currentSongTitle.setText(mService.getCurrentSongTitle());
                     }
@@ -336,12 +354,17 @@ public class MainActivity extends AppCompatActivity {
         switch (item.getItemId()) {
             case R.id.about:
 
+                Intent aboutIntent = new Intent(this, FullscreenAboutActivity.class);
+                this.startActivity(aboutIntent);
+
                 return true;
 
             case R.id.settings:
 
-                //Intent fullScrAuthorInfoIntent = new Intent(this, FullscreenActivityAuthorDisplay.class);
-                //this.startActivity(fullScrAuthorInfoIntent);
+                Intent settingsIntent = new Intent(this, SettingsActivity.class);
+                this.startActivity(settingsIntent);
+
+                enteredSettings = true;
 
                 return true;
 
@@ -349,6 +372,28 @@ public class MainActivity extends AppCompatActivity {
                 // If we got here, the user's action was not recognized.
                 // Invoke the superclass to handle it.
                 return super.onOptionsItemSelected(item);
+        }
+    }
+
+    @Override
+    public void onResume(){
+        super.onResume();
+        if (enteredSettings) {
+            if (wereModified()) {
+                mService.notifySettingsChanged(this);
+            }
+            if (wasPathModified()) {
+                SharedPreferences sharedPref = PreferenceManager.getDefaultSharedPreferences(this);
+                if (sharedPref.contains(KEY_CHOOSE_MUSIC_DIR)) {
+                    String folderPath = sharedPref.getString(KEY_CHOOSE_MUSIC_DIR, "");
+                    songsPaths = null;
+                    processMusicFiles(folderPath);
+
+                    mAdapter = new SongListRecAdapter(songsPaths, new SongListRecAdapterClickListener());
+                    mRecyclerView.swapAdapter(mAdapter, true);
+                }
+            }
+            enteredSettings = false;
         }
     }
 
@@ -369,6 +414,8 @@ public class MainActivity extends AppCompatActivity {
                 mSeekBar.setMax(mService.getPlayerDuration()/1000);
                 currentSongTitle.setText(mService.getCurrentSongTitle());
             }
+
+            mService.notifySettingsChanged(MainActivity.this);
         }
 
         @Override
@@ -422,19 +469,6 @@ public class MainActivity extends AppCompatActivity {
         prefsEditor.putString(KEY_SONGS_PATHS, jsonText);
         prefsEditor.apply();
     }
-/*
-    private void saveServiceState(){
-        SharedPreferences sharedPref = this.getPreferences(Context.MODE_PRIVATE);
-        SharedPreferences.Editor prefsEditor = sharedPref.edit();
-
-        Gson gson = new Gson();
-        String json = gson.toJson(mService);
-        prefsEditor.putString(KEY_SERVICE, json);
-        String json2 = gson.toJson(playIntent);
-        prefsEditor.putString(KEY_PLAY_INTENT, json2);
-        prefsEditor.apply();
-    }
-*/
 
     private void restoreState(){
 
@@ -448,8 +482,9 @@ public class MainActivity extends AppCompatActivity {
             String jsonText = sharedPref.getString(KEY_SONGS_PATHS, null);
             songsPaths = gson.fromJson(jsonText, ArrayList.class);
         }
-        else
-            processMusicFiles();
+        else {
+            processMusicFiles(getDefaultMusicFolderPath());
+        }
 
         SharedPreferences.Editor preferencesEditor = sharedPref.edit();
         preferencesEditor.clear();
@@ -469,9 +504,14 @@ public class MainActivity extends AppCompatActivity {
             if (mSeekBar != null)
                 mSeekBar.setMax(maxDuration/1000);
         }
-        public void onMediaPlayerCompletion(){
-            playButtonUnusualState = true;
-            playPauseButton.setChecked(!playPauseButton.isChecked());
+        public void onMediaPlayerCompletion(boolean isStopped){
+            if(isStopped) {
+                playButtonUnusualState = true;
+                playPauseButton.setChecked(!playPauseButton.isChecked());
+            }
+            else{
+                currentSongTitle.setText(mService.getCurrentSongTitle());
+            }
         }
     };
 }

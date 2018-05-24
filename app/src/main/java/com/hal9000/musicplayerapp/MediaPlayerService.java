@@ -4,13 +4,14 @@ import android.app.Activity;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
-import android.graphics.BitmapFactory;
+import android.content.SharedPreferences;
 import android.media.AudioManager;
 import android.media.MediaMetadataRetriever;
 import android.media.MediaPlayer;
 import android.net.Uri;
 import android.os.Binder;
 import android.os.IBinder;
+import android.preference.PreferenceManager;
 import android.support.annotation.NonNull;
 import android.support.v4.app.NotificationCompat;
 import android.support.v4.app.NotificationManagerCompat;
@@ -19,11 +20,13 @@ import android.widget.Toast;
 
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.Map;
+import java.util.Random;
 import java.util.concurrent.ConcurrentHashMap;
 
 import static com.hal9000.musicplayerapp.MainActivity.LOG_ERR_TAG;
+import static com.hal9000.musicplayerapp.SettingsActivity.GeneralPreferenceFragment.KEY_CONTINUOUS_PLAY;
+import static com.hal9000.musicplayerapp.SettingsActivity.GeneralPreferenceFragment.KEY_SHUFFLE_PLAY;
 
 
 public class MediaPlayerService extends Service implements MediaPlayer.OnPreparedListener, MediaPlayer.OnCompletionListener{
@@ -43,6 +46,10 @@ public class MediaPlayerService extends Service implements MediaPlayer.OnPrepare
     public static final String PLAYER_PAUSED = "Player paused";
     MediaMetadataRetriever mmr = new MediaMetadataRetriever();
 
+    private boolean continuousPlay = false;
+    private boolean shufflePlay = false;
+    private Random randGenerator = new Random();
+
     private Map<Activity, IListenerFunctions> clients = new ConcurrentHashMap<Activity, IListenerFunctions>();
 
     public void onCreate(){
@@ -59,7 +66,19 @@ public class MediaPlayerService extends Service implements MediaPlayer.OnPrepare
         showLocationNotification();
     }
 
+    public void notifySettingsChanged(Activity activity){
+        SharedPreferences sharedPref = PreferenceManager.getDefaultSharedPreferences(activity);
+        if (sharedPref.contains(KEY_CONTINUOUS_PLAY))
+            continuousPlay = sharedPref.getBoolean(KEY_CONTINUOUS_PLAY, false);
+        if (sharedPref.contains(KEY_SHUFFLE_PLAY))
+            shufflePlay = sharedPref.getBoolean(KEY_SHUFFLE_PLAY, false);
+    }
+
     public void setNewSongPaths(@NonNull ArrayList<String> newSongsPaths){
+        if (songsPaths != null){
+            stopAndClearPlayer();
+            initMediaPlayer();
+        }
         songsPaths = newSongsPaths;
     }
 
@@ -129,6 +148,10 @@ public class MediaPlayerService extends Service implements MediaPlayer.OnPrepare
         }
     }
 
+    public boolean playSong(){
+        return playSong(songPos);
+    }
+
     public boolean playSong(int position){
 
         if (isPlayerPaused){
@@ -152,7 +175,6 @@ public class MediaPlayerService extends Service implements MediaPlayer.OnPrepare
             }
             try {
                 mMediaPlayer.setDataSource(getApplicationContext(), musicUri);
-                songPos = position;
             } catch (IOException e) {
                 Toast.makeText(MediaPlayerService.this, "Invalid file path", Toast.LENGTH_SHORT).show();
                 //stopSelf();
@@ -162,16 +184,31 @@ public class MediaPlayerService extends Service implements MediaPlayer.OnPrepare
 
             changeNotificationContent(songsPaths.get(position));
         }
+        songPos = position;
         return true;
     }
 
     @Override
     public void onCompletion(MediaPlayer mp) {
-        isPlayerStopped = true;
-        if (isPlayerInitialized()) {
+        if (continuousPlay){
+            if (shufflePlay){
+                playSong(randGenerator.nextInt(songsPaths.size()));
+            }
+            else{
+                playSong((songPos+1)%songsPaths.size());
+            }
             for (Activity client : clients.keySet()) {
-                clients.get(client).onMediaPlayerCompletion();
+                clients.get(client).onMediaPlayerCompletion(false);
                 //Log.d(LOG_ERR_TAG, "Service.onCreate(): player.onCompletion());
+            }
+        }
+        else {
+            isPlayerStopped = true;
+            if (isPlayerInitialized()) {
+                for (Activity client : clients.keySet()) {
+                    clients.get(client).onMediaPlayerCompletion(true);
+                    //Log.d(LOG_ERR_TAG, "Service.onCreate(): player.onCompletion());
+                }
             }
         }
     }

@@ -2,4 +2,50 @@
     <string name="app_name">MusicPlayerApp</string>
     <string name="s_about">About</string>
     <string name="s_settings">Settings</string>
+    <string name="title_activity_settings">Settings</string>
+
+    <!-- Strings relatedServiceSettingsings -->
+
+    <string name="summary_continuous_play">Automatically play track after track</string>
+    <string name="title_continuous_play">Continuous play</string>
+
+    <string name="summary_shuffle_play">Randomly picks the next song to play</string>
+    <string name="title_shuffle_play">Shuffle play</string>
+
+    <string name="pref_title_sort_by">Sort songs by</string>
+    <string-array name="pref_sort_by_list_titles">
+        <item>File names</item>
+        <item>Song names</item>
+        <item>Artist names</item>
+    </string-array>
+    <string-array name="pref_sort_by_list_values">
+        <item>0</item>
+        <item>1</item>
+        <item>2</item>
+    </string-array>
+
+    <string name="pref_choose_music_directory">Choose music source directory</string>
+
+    <string name="title_activity_fullscreen_about">FullscreenAboutActivity</string>
+    <string name="dummy_button">Dummy Button</string>
+    <string name="dummy_content">DUMMY\nCONTENT</string>
+    <string name="s_fullscr_tv1">Much great</string>
+    <string name="s_fullscr_tv2">Such cool</string>
+    <string name="s_fullscr_tv3">So wow</string>
+    <string name="s_fullscr_tv4">Ultimately Modern Advanced Music Player Infinite</string>
+
+
+    <!-- Example General settings --><!--
+    <string name="pref_header_general">General</string>
+
+    <string name="pref_title_social_recommendations">Enable social recommendations</string>
+    <string name="pref_description_social_recommendations">Recommendations for people to contact
+        based on your message history
+    </string>
+
+    <string name="pref_title_display_name">Display name</string>
+    <string name="pref_default_display_name">John Smith</string>
+
+    <string name="pref_choose_music_directory">Choose music source directory</string> -->
+
 </resources>

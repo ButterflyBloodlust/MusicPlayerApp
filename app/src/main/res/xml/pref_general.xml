@@ -1,0 +1,32 @@
+<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android">
+<!--
+    <Preference android:title="@string/pref_choose_music_directory"
+        android:key="choose_music_directory" >
+    </Preference>
+-->
+
+    <!-- NOTE: ListPreference's summary should be set to its value by the activity code. -->
+<!--
+<ListPreference
+        android:defaultValue="0"
+        android:entries="@array/pref_sort_by_list_titles"
+        android:entryValues="@array/pref_sort_by_list_values"
+        android:key="sort_by_list"
+        android:negativeButtonText="@null"
+        android:positiveButtonText="@null"
+        android:title="@string/pref_title_sort_by" />
+-->
+    <CheckBoxPreference
+        android:defaultValue="false"
+        android:key="continuous_play"
+        android:summary="@string/summary_continuous_play"
+        android:title="@string/title_continuous_play" />
+
+    <CheckBoxPreference
+        android:defaultValue="false"
+        android:key="shuffle_play"
+        android:dependency="continuous_play"
+        android:summary="@string/summary_shuffle_play"
+        android:title="@string/title_shuffle_play" />
+
+</PreferenceScreen>

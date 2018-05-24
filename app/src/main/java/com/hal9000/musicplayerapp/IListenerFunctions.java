@@ -4,5 +4,5 @@ package com.hal9000.musicplayerapp;
 
 public interface IListenerFunctions {
     public void setSeekBarMaxDuration(int maxDuration);
-    public void onMediaPlayerCompletion();
+    public void onMediaPlayerCompletion(boolean isStopped);
 }
